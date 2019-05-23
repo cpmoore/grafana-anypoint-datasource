@@ -1,0 +1,39 @@
+<query-editor-row query-ctrl="ctrl" class="generic-datasource-query-row" can-collapse="true" has-text-edit-mode="false">
+  <div class="gf-form-inline">
+    <div class="gf-form max-width-10">
+      <select class="gf-form-input" ng-model="ctrl.target.type"
+        ng-change="ctrl.setTargetType()"
+        ng-options="f.value as f.text for f in ctrl.targetTypes"></select>
+    </div>
+    <div class="gf-form max-width-12" ng-if="ctrl.target.type==='RUNTIME_MANAGER_RESOURCES' || ctrl.target.type === 'ACCOUNT_RESOURCES'">
+      <select class="gf-form-input" ng-model="ctrl.target.resource"
+        ng-change="ctrl.refresh()"
+        ng-options="f.value as f.text for f in ctrl.resourceTypes[ctrl.target.type]"></select>
+    </div>
+    <div class="gf-form max-width-12" ng-if="ctrl.target.resource!=='ORGANIZATION' || ctrl.target.type==='RUNTIME_MANAGER_RESOURCES'">
+      <select class="gf-form-input" ng-model="ctrl.target.organization"
+        ng-options="f.value as f.text for f in ctrl.datasource.organizations"
+        ng-change="ctrl.getEnvironments()"></select>
+    </div>
+    <div class="gf-form max-width-12"
+      ng-if="(!(ctrl.target.resource==='ORGANIZATION' || ctrl.target.resource==='ENVIRONMENT'))|| !(ctrl.target.type==='RUNTIME_MANAGER_RESOURCES' || ctrl.target.type==='ACCOUNT_RESOURCES')">
+      <select class="gf-form-input" ng-model="ctrl.target.environment"
+        ng-options="f.value as f.text for f in ctrl.datasource.environments[ctrl.target.organization]"
+        ng-change="ctrl.refresh()"></select>
+    </div>
+    <!-- <div class="gf-form max-width-12"  ng-if="ctrl.target.organization !== '' && ctrl.datasource.environments.length>0">
+          <gf-form-dropdown
+            model="ctrl.target.environment"
+            class = "max-width-12"
+            allow-custom="true"
+            lookup-text="true"
+            get-options="ctrl.getEnvironments()"
+            on-change="ctrl.refresh()">
+      </gf-form-dropdown>
+      </div> -->
+
+    <div class="gf-form gf-form--grow">
+      <div class="gf-form-label gf-form-label--grow"></div>
+    </div>
+  </div>
+</query-editor-row>
