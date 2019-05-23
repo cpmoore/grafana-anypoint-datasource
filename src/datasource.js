@@ -5,6 +5,176 @@ function delay(time) {
     setTimeout(resolve, time || 1000)
   })
 }
+
+
+function pointer(msg,string,i){
+    let z=''
+    for(let b=0;b<i;b++){
+        z+=' '
+    }
+    z+='^'
+    msg=msg+" at position "+i+'\n'+string+'\n'+ z
+    return new Error(msg);
+}
+function parseToFields(string) {
+    let terms = []
+    let buffer = ''
+    let escaped = false;
+    let quoteChar;
+    let quoteIndex;
+    for (let i = 0; i < string.length; i++) {
+        let char = string[i];
+        if (char == ' ' && !quoteChar && !buffer) {
+            continue;
+        }
+        if (char === '\\') {
+            if (escaped) {
+                buffer += '\\'
+            } else {
+                escaped = true;
+                continue;
+            }
+        } else if (char == ',' && !quoteChar) {
+            if (buffer) {
+                terms.push(buffer)
+                buffer = ''
+            }
+        } else if (char === quoteChar) {
+            if (escaped) {
+                buffer += '\\'
+            }
+            buffer += quoteChar;
+            if (!escaped) {
+                quoteChar = null;
+            }
+        } else if ((char === '"' || char === "'") && !buffer) {
+            quoteChar = char;
+            quoteIndex = i;
+            buffer += quoteChar;
+        } else {
+            buffer += char
+        }
+        escaped = false;
+    }
+    if (buffer) {
+        if (quoteChar) {
+            throw pointer('Unbalanced quote',string,quoteIndex)
+        }
+        terms.push(buffer);
+    }
+    return terms;
+}
+
+function parseField(string) {
+    let operators = new Set(['=', '!=', '=~', '!~'])
+    let terms = []
+    let buffer = ''
+    let escaped = false;
+    let quoteChar;
+    let quoteIndex;
+    let tempError=null;
+    let spaceCount;
+    let oprFound=false;
+    for (let i = 0; i < string.length; i++) {
+        let char = string[i];
+        if (char == ' ' && !quoteChar) {
+            if (buffer && tempError==null) {
+                tempError= pointer("Unquoted string with spaces",string,i)
+            }
+            continue;
+        }else if(oprFound&&quoteChar==null&&char!=='"'){
+            throw pointer("Value must be quoted",string,i)
+        }
+        let possibleOpr = char + (string[i + 1] || '')
+        if (char === '\\') {
+
+            if (tempError) {
+                throw tempError
+            }
+            if (escaped) {
+                buffer += '\\'
+            } else {
+                escaped = true;
+                continue;
+            }
+        } else if (operators.has(possibleOpr) && !quoteChar) {
+            tempError=null;
+            oprFound=true;
+            if (buffer) {
+                terms.push(buffer)
+                buffer = ''
+            }
+            terms.push(possibleOpr)
+            i = i + 1;
+        } else if (char == '=' && !quoteChar) {
+            tempError=null;
+            oprFound=true;
+            if (buffer) {
+                terms.push(buffer)
+                buffer = ''
+            }
+            terms.push('=')
+        } else if (char === quoteChar) {
+            if (tempError) {
+                throw tempError
+            }
+            if (escaped) {
+                buffer += quoteChar;
+            } else {
+                quoteChar = null;
+            }
+            if(!buffer && oprFound){
+                terms.push("")
+            }
+        } else if ((char === '"') && !buffer) {
+            if (tempError) {
+                throw tempError
+            }
+            quoteChar = char;
+            quoteIndex = i;
+        } else {
+            
+            if (tempError) {
+                throw tempError
+            }
+            buffer += char
+        }
+        escaped = false;
+    }
+    if (buffer) {
+        if (quoteChar) {
+            let z = '';
+            for (let i = 0; i < quoteIndex; i++) {
+                z += ' '
+            }
+            z += '^'
+            z = string + '\n' + z
+            throw new Error("Unbalanced quote at position " + quoteIndex + '\n' + z);
+        }
+        terms.push(buffer);
+    }
+    if (terms.length < 3) {
+        if (terms[0] == '=' || operators.has(terms[0])) {
+            throw new Error("Missing field for expression " + string);
+        } else if(operators.has(terms[terms.length-1])){
+            throw new Error("Missing value for expression " + string);
+        }else{
+            throw new Error("Missing operator for expression " + string);
+        }
+    } else if (terms.length > 3) {
+        throw new Error("Too many operators specified for " + string);
+    }
+    return terms;
+}
+// let string = '"field test" =~ "value", field2="value", AND="",test=  "test test2"'
+// console.log(string)
+// let args = parseToFields(string);
+// console.log(args);
+// console.log()
+// for (let a of args) {
+//     console.log(parseField(a))
+// }
+
 export class GenericDatasource {
 
   constructor(instanceSettings, $q, backendSrv, templateSrv) {
