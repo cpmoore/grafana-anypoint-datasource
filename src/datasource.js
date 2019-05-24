@@ -1,180 +1,24 @@
 import _ from "lodash";
+const JSONPath = require('./lib/jsonpath-plus.min.js').JSONPath;
 
-function delay(time) {
-  return new Promise(function (resolve, reject) {
-    setTimeout(resolve, time || 1000)
-  })
+function jsonQueryExpression(value, variable, defaultFormatFn) {
+  if (typeof value === 'string') {
+    return value;
+  }
+  return JSON.stringify(value);
 }
-
-
-function pointer(msg,string,i){
-    let z=''
-    for(let b=0;b<i;b++){
-        z+=' '
+function asJsonArray(string) {
+  if (typeof string === 'string') {
+    try {
+      return JSON.parse(string)
+    } catch (e) {
+      return [string]
     }
-    z+='^'
-    msg=msg+" at position "+i+'\n'+string+'\n'+ z
-    return new Error(msg);
+  } else if (Array.isArray(string)) {
+    return string;
+  }
+  return [string]
 }
-function parseToFields(string) {
-    let terms = []
-    let buffer = ''
-    let escaped = false;
-    let quoteChar;
-    let quoteIndex;
-    for (let i = 0; i < string.length; i++) {
-        let char = string[i];
-        if (char == ' ' && !quoteChar && !buffer) {
-            continue;
-        }
-        if (char === '\\') {
-            if (escaped) {
-                buffer += '\\'
-            } else {
-                escaped = true;
-                continue;
-            }
-        } else if (char == ',' && !quoteChar) {
-            if (buffer) {
-                terms.push(buffer)
-                buffer = ''
-            }
-        } else if (char === quoteChar) {
-            if (escaped) {
-                buffer += '\\'
-            }
-            buffer += quoteChar;
-            if (!escaped) {
-                quoteChar = null;
-            }
-        } else if ((char === '"' || char === "'") && !buffer) {
-            quoteChar = char;
-            quoteIndex = i;
-            buffer += quoteChar;
-        } else {
-            buffer += char
-        }
-        escaped = false;
-    }
-    if (buffer) {
-        if (quoteChar) {
-            throw pointer('Unbalanced quote',string,quoteIndex)
-        }
-        terms.push(buffer);
-    }
-    return terms;
-}
-
-function parseField(string) {
-    let operators = new Set(['=', '!=', '=~', '!~'])
-    let terms = []
-    let buffer = ''
-    let escaped = false;
-    let quoteChar;
-    let quoteIndex;
-    let tempError=null;
-    let spaceCount;
-    let oprFound=false;
-    for (let i = 0; i < string.length; i++) {
-        let char = string[i];
-        if (char == ' ' && !quoteChar) {
-            if (buffer && tempError==null) {
-                tempError= pointer("Unquoted string with spaces",string,i)
-            }
-            continue;
-        }else if(oprFound&&quoteChar==null&&char!=='"'){
-            throw pointer("Value must be quoted",string,i)
-        }
-        let possibleOpr = char + (string[i + 1] || '')
-        if (char === '\\') {
-
-            if (tempError) {
-                throw tempError
-            }
-            if (escaped) {
-                buffer += '\\'
-            } else {
-                escaped = true;
-                continue;
-            }
-        } else if (operators.has(possibleOpr) && !quoteChar) {
-            tempError=null;
-            oprFound=true;
-            if (buffer) {
-                terms.push(buffer)
-                buffer = ''
-            }
-            terms.push(possibleOpr)
-            i = i + 1;
-        } else if (char == '=' && !quoteChar) {
-            tempError=null;
-            oprFound=true;
-            if (buffer) {
-                terms.push(buffer)
-                buffer = ''
-            }
-            terms.push('=')
-        } else if (char === quoteChar) {
-            if (tempError) {
-                throw tempError
-            }
-            if (escaped) {
-                buffer += quoteChar;
-            } else {
-                quoteChar = null;
-            }
-            if(!buffer && oprFound){
-                terms.push("")
-            }
-        } else if ((char === '"') && !buffer) {
-            if (tempError) {
-                throw tempError
-            }
-            quoteChar = char;
-            quoteIndex = i;
-        } else {
-            
-            if (tempError) {
-                throw tempError
-            }
-            buffer += char
-        }
-        escaped = false;
-    }
-    if (buffer) {
-        if (quoteChar) {
-            let z = '';
-            for (let i = 0; i < quoteIndex; i++) {
-                z += ' '
-            }
-            z += '^'
-            z = string + '\n' + z
-            throw new Error("Unbalanced quote at position " + quoteIndex + '\n' + z);
-        }
-        terms.push(buffer);
-    }
-    if (terms.length < 3) {
-        if (terms[0] == '=' || operators.has(terms[0])) {
-            throw new Error("Missing field for expression " + string);
-        } else if(operators.has(terms[terms.length-1])){
-            throw new Error("Missing value for expression " + string);
-        }else{
-            throw new Error("Missing operator for expression " + string);
-        }
-    } else if (terms.length > 3) {
-        throw new Error("Too many operators specified for " + string);
-    }
-    return terms;
-}
-// let string = '"field test" =~ "value", field2="value", AND="",test=  "test test2"'
-// console.log(string)
-// let args = parseToFields(string);
-// console.log(args);
-// console.log()
-// for (let a of args) {
-//     console.log(parseField(a))
-// }
-
 export class GenericDatasource {
 
   constructor(instanceSettings, $q, backendSrv, templateSrv) {
@@ -187,23 +31,23 @@ export class GenericDatasource {
     this.templateSrv = templateSrv;
     this.accessToken = null;
     this.headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
-    this.organizations = []
-    this.environments = {}
-    this.organizationNames = {}
-    this.environmentNames = {}
-    this.loginTimer = setTimeout(this.loginOrRetry, 5000)
+    this.environmentList = {}
+    this.organizationCache = { namesById: {}, idsByName: {}, list: [] }
+    this.environmentCache = {}
+    this.loginTimer = setTimeout(() => { this.loginOrRetry() }, 100)
+    this.loadingEnvironment = 0
   }
   loginOrRetry() {
     this.login().then((response) => {
       if (response.status === 'failure') {
-        this.loginTimer = setTimeout(this.loginOrRetry, 5000)
+        this.loginTimer = setTimeout(() => { this.loginOrRetry() }, 5000)
       }
     })
   }
-  
+
   metricFindQuery(query) {
     var interpolated = {
-      target: this.templateSrv.replace(query, null, 'regex')
+      target: this.templateSrv.replace(query, null)
     };
 
     return this.doRequest({
@@ -212,14 +56,27 @@ export class GenericDatasource {
       method: 'POST',
     }).then(this.mapToTextValue);
   }
+  isBusy() {
+    return this.loadingProfile || !this.accessToken || this.loadingEnvironment > 0
+  }
   query(options) {
+    if (this.isBusy()) {
+      return new Promise((resolve, reject) => {
+        setTimeout(() => {
+          this.query(options).then(resolve).catch(reject)
+        }, 1500)
+      })
+    }
     // No valid targets, return the empty result to save a round trip.
     if (_.isEmpty(options.targets)) {
       return this.$q.when({ data: [] })
     }
+
     const allQueryPromise = _.map(options.targets, target => {
       if (target.type === 'RUNTIME_MANAGER_RESOURCES') {
-        return this.doRuntimeManagerResourceQuery(target)
+        return this.doRuntimeManagerResourceQuery(target, options)
+      } else if (target.type === 'ACCOUNT_RESOURCES') {
+        return this.doAccountResourceQuery(target, options)
       } else {
         return new Promise(function (resolve, reject) {
           return resolve([])
@@ -229,128 +86,384 @@ export class GenericDatasource {
     return this.q.all(allQueryPromise).then((responseList) => {
       let result = { data: [] };
       _.each(responseList, (response, index) => {
-        result.data = [...result.data, ...response]
+        if (Array.isArray(response)) {
+          result.data = [...result.data, ...response]
+        } else {
+          result.data.push(response)
+        }
       });
       return result
     })
   }
-  doRuntimeManagerResourceQuery(target) {
-    let headers = {
-      'X-ANYPNT-ORG-ID': this.templateSrv.replace(target.organization, null, 'regex'),
-      'X-ANYPNT-ENV-ID': this.templateSrv.replace(target.environment, null, 'regex')
-    };
-    if (!headers['X-ANYPNT-ENV-ID'] || !headers['X-ANYPNT-ORG-ID']) {
-      return []
+  promiseMultipleEnvironments(target, options, promiseMapper) {
+    return new Promise((resolve, reject) => {
+      let targetOrganizations = asJsonArray(this.templateSrv.replace(target.organization, options.scopedVars, jsonQueryExpression));
+      let targetEnvironments = asJsonArray(this.templateSrv.replace(target.environment, options.scopedVars, jsonQueryExpression));
+      if (targetOrganizations.includes('*')) {
+        targetOrganizations = Object.keys(this.organizationCache.namesById)
+      }
+
+
+      let checked = new Set();
+      let promises = []
+      for (let i1 = 0; i1 < targetOrganizations.length; i1++) {
+        let organization = this.organizationCache.idsByName[targetOrganizations[i1]] || targetOrganizations[i1]
+
+        //organization does not exist
+        let cache = this.environmentCache[organization]
+        if (!cache) {
+          console.log('Organization ' + organization + ' does not exist')
+          continue;
+        }
+        let myTargets = targetEnvironments;
+        if (myTargets.includes('*')) {
+          myTargets = Object.keys(this.environmentCache[organization].namesById)
+        }
+        for (let i2 = 0; i2 < myTargets.length; i2++) {
+          let environment = _.get(this.environmentCache, [organization, 'idsByName', myTargets[i2]]) || myTargets[i2];
+          if (checked.has(organization + '|' + environment)) {
+            continue;
+          }
+          checked.add(organization + '|' + environment)
+          if (!cache.idsByName[environment] && !cache.namesById[environment]) {
+            console.log('Environment ' + environment + ' is not part of organization ' + organization, 'environment in organization are', cache.idsByName)
+            continue
+          }
+          promises.push(promiseMapper(organization, environment, this.organizationCache.namesById[organization], this.environmentCache[organization].namesById[environment]))
+        }
+      }
+      this.q.all(promises).then(resolve).catch(reject)
+    })
+
+  }
+  doAccountResourceQuery(target, options) {
+
+    let resourceTypes = new Set();
+    asJsonArray(this.templateSrv.replace(target.resource, options.scopedVars, jsonQueryExpression)).map(function (z) {
+      resourceTypes.add(z.toUpperCase())
+    });
+    function include(x) {
+      return resourceTypes.has(x) || resourceTypes.has('ALL')
     }
-    if (!this.environments.hasOwnProperty(headers['X-ANYPNT-ORG-ID'])) {
-      return new Promise((resolve, reject) => {
-        setTimeout(() => {
-          this.doRuntimeManagerResourceQuery(target).then(resolve).catch(reject)
-        }, 1000)
+
+    let targetOrganizations = asJsonArray(this.templateSrv.replace(target.organization, options.scopedVars, jsonQueryExpression));
+    if (targetOrganizations.includes('*')) {
+        targetOrganizations = Object.keys(this.organizationCache.namesById)
+    }
+    let jsonPath = this.templateSrv.replace(target.jsonPath, options.scopedVars, 'regex');
+    let columns = ['name', 'id', 'clientId','resourceType']
+    let rows = []
+    return this.getMyProfile(false).then((response) => {
+      let orgs = response.data.user.memberOfOrganizations
+      let includesOrganziation = false
+      if (include('ORGANIZATION')) {
+        includesOrganziation = true;
+        rows=[...orgs]
+        columns = [...columns, ...[
+          'createdAt', 'domain', 'idprovider_id', 'isFederated',
+          'isMaster', 'ownerId', 'parentId', 'parentName', 'updatedAt',
+          'parentOrganizationIds', 'subOrganizationIds', 'tenantOrganizationIds'
+        ]]
+      }
+      let promises = []
+      if (include('ENVIRONMENT')) {
+        columns = [...columns, ...[
+          'organization',
+          'organizationId',
+          'isProduction',
+          'type'
+        ]]
+        for (let i = 0; i < orgs.length; i++) {          
+          if(targetOrganizations.includes(orgs[i].id)||targetOrganizations.includes(orgs[i].name)){
+             promises.push(this.getEnvironments(orgs[i].id))
+          }
+        }
+      }
+      return this.q.all(promises).then((x) => {
+        
+        for (let i = 0; i < x.length; i++) {
+          
+          let envs = x[i].data.data
+          for (let i2 = 0; i2 < envs.length; i2++) {
+            let env = envs[i2]
+            env.resourceType='ENVIRONMENT'
+            env.organization = this.organizationCache.namesById[env.organizationId]
+            rows.push(env)
+          }
+        }
+        columns = columns.map((x, i) => {
+          if (typeof x === 'string') {
+            return { text: x, type: 'string' }
+          }
+        })
+        if (jsonPath) {
+          rows = JSONPath({ path: jsonPath, json: rows })
+        }
+        let response = {
+          columns: columns,
+          rows: rows.map((obj) => {
+            return columns.map(x => obj[x.text] || '')
+          }),
+          type: 'table'
+        }
+        return response
       })
+    })
+  }
+  doRuntimeManagerResourceQuery(target, options) {
+    let resourceTypes = new Set();
+    asJsonArray(this.templateSrv.replace(target.resource, options.scopedVars, jsonQueryExpression)).map(function (z) {
+      resourceTypes.add(z.toUpperCase())
+    });
+    function include(x) {
+      return resourceTypes.has(x) || resourceTypes.has('ALL')
     }
+    let jsonPath = this.templateSrv.replace(target.jsonPath, options.scopedVars, 'regex');
+    let organizationCache = this.organizationCache
+    let environmentCache = this.environmentCache
+    return this.promiseMultipleEnvironments(target, options, (organization, environment) => {
+      return this.doRequest({
+        url: '/armui/api/v1/servers',
+        headers: {
+          'X-ANYPNT-ORG-ID': organization,
+          'X-ANYPNT-ENV-ID': environment
+        }
+      })
+    }).then((responseList) => {
+      return responseList.map((data) => {
+        let organization = data.config.headers['X-ANYPNT-ORG-ID']
+        let environment = data.config.headers['X-ANYPNT-ENV-ID']
+        data = data.data.data
 
-    return this.doRequest({
-      url: '/armui/api/v1/servers',
-      headers: headers
-    }).then((data) => {
-      if (!data) {
-        throw new Error('No response received')
-      } else if (data.status !== 200) {
-        throw new Error("Status code " + data.status + " received")
-      }
-      data = data.data.data
-
-      let resource = target.resource.toUpperCase();
-      let typeIndex;
-      let columns = [
-        { 'text': 'type', 'type': 'string' },
-        { 'text': 'name', 'type': 'string' },
-        { 'text': 'organization', 'type': 'string' },
-        { 'text': 'environment', 'type': 'string' },
-        { 'text': 'status', 'type': 'string' },
-        { 'text': 'id', 'type': 'string' },
-        { 'text': 'organizationId', 'type': 'string' },
-        { 'text': 'environmentId', 'type': 'string' },
-        { 'text': 'statusCode', 'type': 'number' }
-      ]
-      if (resource === 'APPLICATION' || resource === 'ALL') {
-        columns = [...columns,
-        { 'text': 'fileChecksum', 'type': 'string' },
-        { 'text': 'fileName', 'type': 'string' },
-        { 'text': 'lastUpdateTime', 'type': 'string' }
+        let columns = [
+          { 'text': 'type', 'type': 'string' },
+          { 'text': 'name', 'type': 'string' },
+          { 'text': 'organization', 'type': 'string' },
+          { 'text': 'environment', 'type': 'string' },
+          { 'text': 'status', 'type': 'string' },
+          { 'text': 'id', 'type': 'string' },
+          { 'text': 'organizationId', 'type': 'string' },
+          { 'text': 'environmentId', 'type': 'string' },
+          { 'text': 'statusCode', 'type': 'number' }
         ]
-      }
-      if (resource === 'SERVER' || resource === 'ALL') {
-        columns = [
-          ...columns,
-          { 'text': 'agentVersion', 'type': 'string' },
-          { 'text': 'runtimeVersion', 'type': 'string' },
-          { 'text': 'currentClusteringIp', 'type': 'string' },
-          { 'text': 'addresses', 'type': 'string' },
-          { 'text': 'parent', 'type': 'string' },
-          { 'text': 'parentType', 'type': 'string' }
-        ]
-      }
+        if (include('APPLICATION')) {
+          columns = [...columns,
+          { 'text': 'fileChecksum', 'type': 'string' },
+          { 'text': 'fileName', 'type': 'string' },
+          { 'text': 'lastUpdateTime', 'type': 'string' }
+          ]
+        }
+        if (include('SERVER')) {
+          columns = [
+            ...columns,
+            { 'text': 'agentVersion', 'type': 'string' },
+            { 'text': 'runtimeVersion', 'type': 'string' },
+            { 'text': 'currentClusteringIp', 'type': 'string' },
+            { 'text': 'addresses', 'type': 'string' },
+            { 'text': 'parent', 'type': 'string' },
+            { 'text': 'parentType', 'type': 'string' }
+          ]
+        }
+        let rows = []
 
-      let response = {
-        columns: columns,
-        rows: [], type: 'table'
-      }
-      let organizationNames = this.organizationNames;
-      let environmentNames = this.environmentNames;
-      function mapOne(obj) {
-        let statues = ['RUNNING', 'STARTED', 'DISCONNECTED', 'STOPPED', 'DEPLOYMENT_FAILED']
-        let i;
-        for (i = 0; i < statues.length; i++) {
-          if (obj.status === statues[i]) {
+
+        function addOne(obj) {
+          let statues = ['RUNNING', 'STARTED', 'DISCONNECTED', 'STOPPED', 'DEPLOYMENT_FAILED']
+          let i;
+          for (i = 0; i < statues.length; i++) {
+            if (obj.status === statues[i]) {
               break;
+            }
+          }
+          obj.statusCode = i + 1;
+          obj.organizationId = organization
+          obj.environmentId = environment
+          obj.organization = organizationCache.namesById[organization]
+          obj.environment = environmentCache[organization].namesById[environment]
+          if (jsonPath) {
+            rows.push(obj)
+          } else {
+            rows.push(columns.map(x => obj[x.text] || ''))
           }
         }
-        obj.statusCode = i+1;
-        obj.organizationId=headers['X-ANYPNT-ORG-ID']
-        obj.organization=organizationNames[headers['X-ANYPNT-ORG-ID']]
-        obj.environmentId=headers['X-ANYPNT-ENV-ID']
-        obj.environment=environmentNames[headers['X-ANYPNT-ENV-ID']]
-        response.rows.push(columns.map(x => obj[x.text] || ''))
-      }
 
-      for (let i = 0; i < data.length; i++) {
-
-        if (resource === 'APPLICATION' || target.resource === 'ALL') {
-          let deployments = data[i].deployments
-          for (let i2 = 0; i2 < deployments.length; i2++) {
-            let deployment = deployments[i2].artifact;
-            deployment.status = deployments[i2].lastReportedStatus;
-            deployment.id = deployments[i2].id;
-            deployment.type = 'APPLICATION'
-            mapOne(deployment)
+        for (let i = 0; i < data.length; i++) {
+          if (include('APPLICATION')) {
+            let deployments = data[i].deployments
+            for (let i2 = 0; i2 < deployments.length; i2++) {
+              let deployment = deployments[i2].artifact;
+              deployment.status = deployments[i2].lastReportedStatus;
+              deployment.id = deployments[i2].id;
+              deployment.type = 'APPLICATION'
+              addOne(deployment)
+            }
+          }
+          if (include('SERVER') && data[i].details && data[i].details.servers) {
+            let servers = data[i].details.servers;
+            for (let i2 = 0; i2 < servers.length; i2++) {
+              let server = servers[i2].details;
+              server.id = servers[i2].id;
+              server.name = servers[i2].name;
+              server.status = servers[i2].status;
+              server.type = 'SERVER';
+              server.parent = data[i].name;
+              server.parentType = data[i].type
+              server.addresses = JSON.stringify(server.addresses)
+              addOne(server)
+            }
+          }
+          if (include(data[i].type)) {
+            addOne(data[i])
           }
         }
-        if ((resource === 'SERVER' || target.resource === 'ALL') && data[i].details && data[i].details.servers) {
-          let servers = data[i].details.servers;
-          for (let i2 = 0; i2 < servers.length; i2++) {
-            let server = servers[i2].details;
-            server.id = servers[i2].id;
-            server.name = servers[i2].name;
-            server.status = servers[i2].status;
-            server.type = 'SERVER';
-            server.parent = data[i].name;
-            server.parentType = data[i].type
-            server.addresses=JSON.stringify(server.addresses)
-            mapOne(server)
-          }
+        if (jsonPath) {
+          rows = JSONPath({ path: jsonPath, json: rows }).map((obj) => {
+            return columns.map(x => obj[x.text] || '')
+          });
         }
-        if (resource === data[i].type || resource === 'ALL') {
-          mapOne(data[i])
+        return {
+          columns: columns,
+          rows: rows,
+          type: 'table'
         }
-      }
-      return [response];
-
+      })
     }).catch(function (error) {
       console.log(error)
       throw error
     })
+
+
+    // if (target.type === 'RUNTIME_MANAGER_RESOURCES') {
+    //   return this.doRuntimeManagerResourceQuery(target,options)
+    // } else {
+    //   return new Promise(function (resolve, reject) {
+    //     return resolve([])
+    //   })
+    // }
+
+    // console.log('>>>', targetOrganization, targetEnvironment)
+    // if (targetOrganization !== target.organization) {
+    //   if (this.organizationCache.idsByName[targetOrganization]) {
+    //     targetOrganization = this.organizationCache.idsByName[targetOrganization]
+    //   }
+    // }
+    // if (targetEnvironment !== target.environment) {
+    //   if (_.get(this.environmentCache, [targetOrganization, targetEnvironment])) {
+    //     targetEnvironment = this.environmentCache[targetOrganization][targetEnvironment]
+    //   }
+    // }
+    // if (!targetOrganization || !targetEnvironment || !this.environments[targetOrganization]) {
+    //   return []
+    // }
+
+
+
+
+    // // console.log(filter)
+
+    // return this.doRequest({
+    //   url: '/armui/api/v1/servers',
+    //   headers: {
+    //     'X-ANYPNT-ORG-ID': targetOrganization,
+    //     'X-ANYPNT-ENV-ID': targetEnvironment
+    //   }
+    // }).then((data) => {
+    //   if (!data) {
+    //     throw new Error('No response received, possible invalid organization or environment.')
+    //   } else if (data.status !== 200) {
+    //     throw new Error("Status code " + data.status + " received")
+    //   }
+    //   data = data.data.data
+    //   let resource = target.resource.toUpperCase();
+    //   let typeIndex;
+    //   let columns = [
+    //     { 'text': 'type', 'type': 'string' },
+    //     { 'text': 'name', 'type': 'string' },
+    //     { 'text': 'organization', 'type': 'string' },
+    //     { 'text': 'environment', 'type': 'string' },
+    //     { 'text': 'status', 'type': 'string' },
+    //     { 'text': 'id', 'type': 'string' },
+    //     { 'text': 'organizationId', 'type': 'string' },
+    //     { 'text': 'environmentId', 'type': 'string' },
+    //     { 'text': 'statusCode', 'type': 'number' }
+    //   ]
+    //   if (resource === 'APPLICATION' || resource === 'ALL') {
+    //     columns = [...columns,
+    //     { 'text': 'fileChecksum', 'type': 'string' },
+    //     { 'text': 'fileName', 'type': 'string' },
+    //     { 'text': 'lastUpdateTime', 'type': 'string' }
+    //     ]
+    //   }
+    //   if (resource === 'SERVER' || resource === 'ALL') {
+    //     columns = [
+    //       ...columns,
+    //       { 'text': 'agentVersion', 'type': 'string' },
+    //       { 'text': 'runtimeVersion', 'type': 'string' },
+    //       { 'text': 'currentClusteringIp', 'type': 'string' },
+    //       { 'text': 'addresses', 'type': 'string' },
+    //       { 'text': 'parent', 'type': 'string' },
+    //       { 'text': 'parentType', 'type': 'string' }
+    //     ]
+    //   }
+
+    //   let response = {
+    //     columns: columns,
+    //     rows: [], type: 'table'
+    //   }
+    //   let organizationCache.namesById = this.organizationCache.namesById;
+    //   let environmentNames = this.environmentNames;
+    //   function mapOne(obj) {
+    //     let statues = ['RUNNING', 'STARTED', 'DISCONNECTED', 'STOPPED', 'DEPLOYMENT_FAILED']
+    //     let i;
+    //     for (i = 0; i < statues.length; i++) {
+    //       if (obj.status === statues[i]) {
+    //         break;
+    //       }
+    //     }
+    //     obj.statusCode = i + 1;
+    //     obj.organizationId = targetOrganization
+    //     obj.organization = organizationCache.namesById[targetOrganization]
+    //     obj.environmentId = targetEnvironment
+    //     obj.environment = environmentNames[targetEnvironment]
+    //     response.rows.push(columns.map(x => obj[x.text] || ''))
+    //   }
+
+    //   for (let i = 0; i < data.length; i++) {
+
+    //     if (resource === 'APPLICATION' || target.resource === 'ALL') {
+    //       let deployments = data[i].deployments
+    //       for (let i2 = 0; i2 < deployments.length; i2++) {
+    //         let deployment = deployments[i2].artifact;
+    //         deployment.status = deployments[i2].lastReportedStatus;
+    //         deployment.id = deployments[i2].id;
+    //         deployment.type = 'APPLICATION'
+    //         mapOne(deployment)
+    //       }
+    //     }
+    //     if ((resource === 'SERVER' || target.resource === 'ALL') && data[i].details && data[i].details.servers) {
+    //       let servers = data[i].details.servers;
+    //       for (let i2 = 0; i2 < servers.length; i2++) {
+    //         let server = servers[i2].details;
+    //         server.id = servers[i2].id;
+    //         server.name = servers[i2].name;
+    //         server.status = servers[i2].status;
+    //         server.type = 'SERVER';
+    //         server.parent = data[i].name;
+    //         server.parentType = data[i].type
+    //         server.addresses = JSON.stringify(server.addresses)
+    //         mapOne(server)
+    //       }
+    //     }
+    //     if (resource === data[i].type || resource === 'ALL') {
+    //       mapOne(data[i])
+    //     }
+    //   }
+    //   return [response];
+
+    // }).catch(function (error) {
+    //   console.log(error)
+    //   throw error
+    // })
     // var query = this.buildQueryParameters(options);
     // query.targets = query.targets.filter(t => !t.hide);
 
@@ -385,23 +498,14 @@ export class GenericDatasource {
         return { status: "error", message: "Invalid credentials" };
       } else if (response.status === 200) {
         this.accessToken = response.data.access_token
-        this.doRequest({
-          url: '/accounts/api/me',
-          method: 'GET'
-        }).then((r) => {
-          this.organizations = r.data.user.memberOfOrganizations.map((o) => {
-            this.organizationNames[o.id] = o.name;
-            return { text: o.name, value: o.id }
-          })
+        return this.getMyProfile().then((r) => {
           r = r.data.access_token;
           let time = 1000 * (r.expires_in) - 30
-          if (time < 10000) {
-            time = 10000
-          }
+          if (time < 10000) { time = 10000 }
           console.log("reauthenticating in", time)
-          this.loginTimer = setTimeout(this.loginOrRetry, time)
+          this.loginTimer = setTimeout(() => { this.loginOrRetry() }, time)
+          return { status: "success", message: "Data source is working, found " + this.organizationCache.list.length + " organizations" };
         })
-        return { status: "success", message: "Data source is working" };
       } else {
         this.accessToken = null
         return { status: "failure", message: "Status code: " + response.status };
@@ -415,60 +519,48 @@ export class GenericDatasource {
   testDatasource() {
     return this.login();
   }
-
-  // annotationQuery(options) {
-  //   var query = this.templateSrv.replace(options.annotation.query, {}, 'glob');
-  //   var annotationQuery = {
-  //     range: options.range,
-  //     annotation: {
-  //       name: options.annotation.name,
-  //       datasource: options.annotation.datasource,
-  //       enable: options.annotation.enable,
-  //       iconColor: options.annotation.iconColor,
-  //       query: query
-  //     },
-  //     rangeRaw: options.rangeRaw
-  //   };
-
-  //   return this.doRequest({
-  //     url: '/annotations',
-  //     method: 'POST',
-  //     data: annotationQuery
-  //   }).then(result => {
-  //     return result.data;
-  //   });
-  // }
-
-
-  getOrganizations() {
+  getMyProfile(includeEnvironments) {
+    this.loadingProfile = true;
     return this.doRequest({
       url: '/accounts/api/me',
       method: 'GET'
     }).then((response) => {
-      this.organizations = response.data.user.memberOfOrganizations.map((o) => {
-        this.organizationNames[o.id] = o.name;
-        return { text: o.name, value: o.id }
-      })
-      return this.organizations
+      this.organizationCache.list = [
+        { 'text': 'All', value: '*' },
+        ...response.data.user.memberOfOrganizations.map((o,i) => {
+          response.data.user.memberOfOrganizations[i].resourceType='ORGANIZATION'
+          this.organizationCache.idsByName[o.name] = o.id;
+          this.organizationCache.namesById[o.id] = o.name;
+          if (includeEnvironments !== false) {
+            this.getEnvironments(o.id);
+          }
+          return { text: o.name, value: o.id }
+        })]
+      this.loadingProfile = false;
+      return response;
     });
   }
-  getEnvironments(organization) {
-    if (this.environments[organization]) {
-      return new Promise((resolve, reject) => {
-        resolve(this.environments[organization])
-      })
+  getEnvironments(targetOrganization) {
+    this.loadingEnvironment++;
+    let organization = this.templateSrv.replace(targetOrganization, null)
+    if (targetOrganization !== organization && this.organizationCache.idsByName[organization]) {
+      organization = this.organizationCache.idsByName[organization]
     }
-    this.currentOrganization = organization;
-    organization = this.templateSrv.replace(organization, null, 'regex')
     return this.doRequest({
       url: '/accounts/api/organizations/' + organization + '/environments',
       method: 'GET'
     }).then((response) => {
-      this.environments[organization] = response.data.data.map((o) => {
-        this.environmentNames[o.id] = o.name
-        return { text: o.name, value: o.id }
-      })
-      return this.environments[organization];
+      this.environmentCache[organization] = { idsByName: {}, namesById: {} }
+      this.environmentList[organization] = [
+        { 'text': 'All', value: '*' },
+        ...response.data.data.map((o) => {
+          this.environmentCache[organization].idsByName[o.name] = o.id;
+          this.environmentCache[organization].namesById[o.id] = o.name
+          return { text: o.name, value: o.name }
+        })]
+      this.loadingEnvironment--;
+      this.environmentList[organization];
+      return response;
     });
   }
 
@@ -505,7 +597,14 @@ export class GenericDatasource {
       options.headers[x] = this.headers[x]
     }
     options.url = this.url + options.url;
-    return this.backendSrv.datasourceRequest(options)
+    return this.backendSrv.datasourceRequest(options).then((data) => {
+      if (!data) {
+        throw new Error('No response received, possible invalid organization or environment.')
+      } else if (data.status !== 200) {
+        throw new Error("Status code " + data.status + " received")
+      }
+      return data
+    })
   }
 
   // buildQueryParameters(options) {

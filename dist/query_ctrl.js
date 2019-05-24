@@ -26,65 +26,68 @@ var GenericDatasourceQueryCtrl = exports.GenericDatasourceQueryCtrl = function (
     var _this = _possibleConstructorReturn(this, (GenericDatasourceQueryCtrl.__proto__ || Object.getPrototypeOf(GenericDatasourceQueryCtrl)).call(this, $scope, $injector));
 
     _this.scope = $scope;
-    _this.organizations = [];
     _this.target.type = _this.target.type || 'resources';
     _this.target.organization = _this.target.organization || '';
     _this.target.environment = _this.target.environment || '';
     _this.target.resource = _this.target.resource || 'ALL';
     _this.targetTypes = [{ 'value': 'ACCOUNT_RESOURCES', 'text': "Account Resources" }, { 'value': 'RUNTIME_MANAGER_RESOURCES', 'text': "Runtime Manager Resources" }];
     _this.resourceTypes = {
-      'ACCOUNT_RESOURCES': [{ 'value': 'ORGANIZATION', 'text': 'Organizations' }, { 'value': 'ENVIRONMENT', 'text': 'Environments' }],
-      'RUNTIME_MANAGER_RESOURCES': [{ 'value': 'ALL', 'text': 'All Runtime Manager Resources' }, { 'value': 'APPLICATION', 'text': 'Applications' }, { 'value': 'SERVER', 'text': 'Servers' }, { 'value': 'SERVER_GROUP', 'text': 'Server Groups' }, { 'value': 'CLUSER', 'text': 'Clusters' }]
+      'ACCOUNT_RESOURCES': [{ 'value': 'ALL', 'text': 'All' }, { 'value': 'ORGANIZATION', 'text': 'Organizations' }, { 'value': 'ENVIRONMENT', 'text': 'Environments' }],
+      'RUNTIME_MANAGER_RESOURCES': [{ 'value': 'ALL', 'text': 'All' }, { 'value': 'APPLICATION', 'text': 'Applications' }, { 'value': 'SERVER', 'text': 'Servers' }, { 'value': 'SERVER_GROUP', 'text': 'Server Groups' }, { 'value': 'CLUSER', 'text': 'Clusters' }]
     };
-    if (_this.target.organization) {
-      _this.getEnvironments();
-    } else {
-      _this.setOrganization();
-    }
+    _this.previousOrganization = _this.target.organization;
+
     return _this;
   }
 
   _createClass(GenericDatasourceQueryCtrl, [{
-    key: 'setTargetType',
-    value: function setTargetType() {
-      this.target.resource = this.resourceTypes[this.target.type][0].value;
-      this.refresh();
+    key: 'getResourceTypes',
+    value: function getResourceTypes() {
+      var _this2 = this;
+
+      return new Promise(function (resolve) {
+        resolve(_this2.resourceTypes[_this2.target.type]);
+      });
     }
   }, {
-    key: 'setOrganization',
-    value: function setOrganization() {
-      if (this.datasource.organizations.length) {
-        return setTimeout(this.setOrganization, 1000);
-      }
-      this.target.organization = this.datasource.organizations[0].value;
-      this.getEnvironments();
+    key: 'getOrganizations',
+    value: function getOrganizations() {
+      var _this3 = this;
+
+      return new Promise(function (resolve) {
+        if (_this3.datasource.organizationCache.list.length) {
+          return resolve(_this3.datasource.organizationCache.list);
+        }
+        setTimeout(function () {
+          _this3.getOrganizations().then(resolve);
+        }, 1000);
+      });
     }
   }, {
     key: 'getEnvironments',
     value: function getEnvironments() {
-      var _this2 = this;
-
-      var organization = this.target.organization;
-      var environmentName = this.datasource.environmentNames[this.target.environment];
-
-      return this.datasource.getEnvironments(organization).then(function (response) {
-        var newEnv = void 0;
-        for (var i = 0; i < response.length; i++) {
-          var env = response[i];
-          if (env.value === _this2.target.environment) {
-            return response;
-          }
-          if (env.text === environmentName) {
-            newEnv = env.value;
+      return this.datasource.promiseMultipleEnvironments({
+        organization: this.target.organization,
+        environment: '*'
+      }, {}, function (org, env, orgName, envName) {
+        return envName;
+      }).then(function (d) {
+        var all = [{ 'value': '*', 'text': "All" }];
+        var found = new Set(['*']);
+        for (var i = 0; i < d.length; i++) {
+          if (!found.has(d[i])) {
+            found.add(d[i]);
+            all.push({ value: d[i], text: d[i] });
           }
         }
-        if (!newEnv && response.length) {
-          newEnv = response[0].value;
-        }
-        _this2.target.environment = newEnv;
-        _this2.refresh();
-        return response;
+        return all;
       });
+    }
+  }, {
+    key: 'onTargetTypeChange',
+    value: function onTargetTypeChange() {
+      this.target.resource = this.resourceTypes[this.target.type][0].value;
+      this.refresh();
     }
   }, {
     key: 'refresh',

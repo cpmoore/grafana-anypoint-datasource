@@ -1,39 +1,51 @@
 <query-editor-row query-ctrl="ctrl" class="generic-datasource-query-row" can-collapse="true" has-text-edit-mode="false">
   <div class="gf-form-inline">
-    <div class="gf-form max-width-10">
+    <div class="gf-form max-width-20">
       <select class="gf-form-input" ng-model="ctrl.target.type"
-        ng-change="ctrl.setTargetType()"
+        ng-change="ctrl.onTargetTypeChange()"
         ng-options="f.value as f.text for f in ctrl.targetTypes"></select>
     </div>
     <div class="gf-form max-width-12" ng-if="ctrl.target.type==='RUNTIME_MANAGER_RESOURCES' || ctrl.target.type === 'ACCOUNT_RESOURCES'">
-      <select class="gf-form-input" ng-model="ctrl.target.resource"
-        ng-change="ctrl.refresh()"
-        ng-options="f.value as f.text for f in ctrl.resourceTypes[ctrl.target.type]"></select>
+        <gf-form-dropdown 
+				model="ctrl.target.resource"
+				class = "max-width-12"
+				lookup-text="true"
+				allow-custom = "false"
+				get-options="ctrl.getResourceTypes()"
+				on-change = "ctrl.refresh()"
+				>
+			</gf-form-dropdown>
+      
     </div>
-    <div class="gf-form max-width-12" ng-if="ctrl.target.resource!=='ORGANIZATION' || ctrl.target.type==='RUNTIME_MANAGER_RESOURCES'">
-      <select class="gf-form-input" ng-model="ctrl.target.organization"
-        ng-options="f.value as f.text for f in ctrl.datasource.organizations"
-        ng-change="ctrl.getEnvironments()"></select>
+      <div class="gf-form max-width-12" ng-if="ctrl.target.resource!=='ORGANIZATION' || ctrl.target.type==='RUNTIME_MANAGER_RESOURCES'">
+      	<gf-form-dropdown 
+				model="ctrl.target.organization"
+				class = "max-width-12"
+				lookup-text="true"
+				allow-custom = "false"
+				get-options="ctrl.getOrganizations()"
+				on-change = "ctrl.refresh()"
+				>
+			</gf-form-dropdown>
     </div>
     <div class="gf-form max-width-12"
       ng-if="(!(ctrl.target.resource==='ORGANIZATION' || ctrl.target.resource==='ENVIRONMENT'))|| !(ctrl.target.type==='RUNTIME_MANAGER_RESOURCES' || ctrl.target.type==='ACCOUNT_RESOURCES')">
-      <select class="gf-form-input" ng-model="ctrl.target.environment"
-        ng-options="f.value as f.text for f in ctrl.datasource.environments[ctrl.target.organization]"
-        ng-change="ctrl.refresh()"></select>
-    </div>
-    <!-- <div class="gf-form max-width-12"  ng-if="ctrl.target.organization !== '' && ctrl.datasource.environments.length>0">
-          <gf-form-dropdown
-            model="ctrl.target.environment"
-            class = "max-width-12"
-            allow-custom="true"
-            lookup-text="true"
-            get-options="ctrl.getEnvironments()"
-            on-change="ctrl.refresh()">
+      <gf-form-dropdown 
+				model="ctrl.target.environment"
+				class = "max-width-12"
+				lookup-text="true"
+				allow-custom = "false"
+				get-options="ctrl.getEnvironments()"
+				on-change = "ctrl.refresh()"
+				>
       </gf-form-dropdown>
-      </div> -->
-
-    <div class="gf-form gf-form--grow">
-      <div class="gf-form-label gf-form-label--grow"></div>
     </div>
+
+    <div class="gf-form gf-form--grow" >
+      <input type="text" class="gf-form-input gf-form--forw" ng-model="ctrl.target.jsonPath" spellcheck='false' placeholder="JSONPath to filter data, eg: $[?(/comments.*/.test(@.name))]  " data-min-length=0 data-items=1000 ng-model-onblur ng-change="ctrl.refresh()" />
+    </div>
+    <!-- <div class="gf-form gf-form--grow">
+      <div class="gf-form-label gf-form-label--grow"></div>
+    </div> -->
   </div>
 </query-editor-row>

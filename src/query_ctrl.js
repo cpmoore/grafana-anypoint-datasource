@@ -6,7 +6,6 @@ export class GenericDatasourceQueryCtrl extends QueryCtrl {
     super($scope, $injector);
 
     this.scope = $scope;
-    this.organizations = [];
     this.target.type = this.target.type || 'resources';
     this.target.organization = this.target.organization || ''
     this.target.environment = this.target.environment || ''
@@ -16,57 +15,58 @@ export class GenericDatasourceQueryCtrl extends QueryCtrl {
       { 'value': 'RUNTIME_MANAGER_RESOURCES', 'text': "Runtime Manager Resources" }
     ]
     this.resourceTypes = {
-      'ACCOUNT_RESOURCES':[
+      'ACCOUNT_RESOURCES': [
+        { 'value': 'ALL', 'text': 'All' },
         { 'value': 'ORGANIZATION', 'text': 'Organizations' },
         { 'value': 'ENVIRONMENT', 'text': 'Environments' }
       ],
       'RUNTIME_MANAGER_RESOURCES': [
-        { 'value': 'ALL', 'text': 'All Runtime Manager Resources' },
+        { 'value': 'ALL', 'text': 'All' },
         { 'value': 'APPLICATION', 'text': 'Applications' },
         { 'value': 'SERVER', 'text': 'Servers' },
         { 'value': 'SERVER_GROUP', 'text': 'Server Groups' },
         { 'value': 'CLUSER', 'text': 'Clusters' }
       ]
     }
-    if (this.target.organization) {
-      this.getEnvironments()
-    } else {
-      this.setOrganization();
-    }
+    this.previousOrganization = this.target.organization
+
   }
-  setTargetType(){
-    this.target.resource=this.resourceTypes[this.target.type][0].value
-    this.refresh()
+  getResourceTypes() {
+    return new Promise((resolve) => {
+      resolve(this.resourceTypes[this.target.type])
+    })
   }
-  setOrganization() {
-    if (this.datasource.organizations.length) {
-      return setTimeout(this.setOrganization, 1000)
-    }
-    this.target.organization = this.datasource.organizations[0].value;
-    this.getEnvironments()
+  getOrganizations() {
+    return new Promise((resolve) => {
+      if (this.datasource.organizationCache.list.length) {
+        return resolve(this.datasource.organizationCache.list)
+      }
+      setTimeout(() => {
+        this.getOrganizations().then(resolve)
+      }, 1000)
+    })
   }
   getEnvironments() {
-    let organization = this.target.organization
-    let environmentName = this.datasource.environmentNames[this.target.environment]
-
-    return this.datasource.getEnvironments(organization).then((response) => {
-      let newEnv;
-      for (let i = 0; i < response.length; i++) {
-        let env = response[i];
-        if (env.value === this.target.environment) {
-          return response;
-        }
-        if (env.text === environmentName) {
-          newEnv = env.value;
+    return this.datasource.promiseMultipleEnvironments({
+      organization: this.target.organization,
+      environment: '*'
+    }, {},(org, env, orgName, envName) => envName).then((d) => {
+      let all = [
+        {'value':'*','text':"All"}
+      ]
+      let found = new Set();
+      for (let i = 0; i < d.length; i++) {
+        if (!found.has(d[i])) {
+          found.add(d[i])
+          all.push({ value: d[i], text: d[i] })
         }
       }
-      if (!newEnv && response.length) {
-        newEnv = response[0].value;
-      }
-      this.target.environment = newEnv
-      this.refresh()
-      return response
-    });
+      return all
+    })
+  }
+  onTargetTypeChange() {
+    this.target.resource = this.resourceTypes[this.target.type][0].value
+    this.refresh()
   }
   refresh() {
     this.panelCtrl.refresh()
