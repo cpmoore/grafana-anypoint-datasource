@@ -1,6 +1,5 @@
 import _ from "lodash";
 import moment from 'moment'
-
 const JSONPath = require('./lib/jsonpath-plus.min.js').JSONPath;
 
 function jsonQueryExpression(value, variable, defaultFormatFn) {
