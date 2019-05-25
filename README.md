@@ -1,11 +1,6 @@
 ## MuleSoft Anypoint Platform Datasource
 
-## Installation
-To install this plugin using the `grafana-cli` tool:
-```
-sudo grafana-cli plugins install grafana-anypoint-datasource
-sudo service grafana-server restart
-```
+A grafana datasource to connect to MuleSoft Anypoint Platform and pull metrics and account information.
 
 ### Dev setup
 ```
