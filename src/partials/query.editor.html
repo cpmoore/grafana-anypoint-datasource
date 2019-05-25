@@ -1,51 +1,83 @@
 <query-editor-row query-ctrl="ctrl" class="generic-datasource-query-row" can-collapse="true" has-text-edit-mode="false">
-  <div class="gf-form-inline">
-    <div class="gf-form max-width-20">
-      <select class="gf-form-input" ng-model="ctrl.target.type"
-        ng-change="ctrl.onTargetTypeChange()"
-        ng-options="f.value as f.text for f in ctrl.targetTypes"></select>
-    </div>
-    <div class="gf-form max-width-12" ng-if="ctrl.target.type==='RUNTIME_MANAGER_RESOURCES' || ctrl.target.type === 'ACCOUNT_RESOURCES'">
-        <gf-form-dropdown 
-				model="ctrl.target.resource"
-				class = "max-width-12"
-				lookup-text="true"
-				allow-custom = "false"
-				get-options="ctrl.getResourceTypes()"
-				on-change = "ctrl.refresh()"
-				>
-			</gf-form-dropdown>
-      
-    </div>
-      <div class="gf-form max-width-12" ng-if="ctrl.target.resource!=='ORGANIZATION' || ctrl.target.type==='RUNTIME_MANAGER_RESOURCES'">
-      	<gf-form-dropdown 
-				model="ctrl.target.organization"
-				class = "max-width-12"
-				lookup-text="true"
-				allow-custom = "false"
-				get-options="ctrl.getOrganizations()"
-				on-change = "ctrl.refresh()"
-				>
-			</gf-form-dropdown>
-    </div>
-    <div class="gf-form max-width-12"
-      ng-if="(!(ctrl.target.resource==='ORGANIZATION' || ctrl.target.resource==='ENVIRONMENT'))|| !(ctrl.target.type==='RUNTIME_MANAGER_RESOURCES' || ctrl.target.type==='ACCOUNT_RESOURCES')">
-      <gf-form-dropdown 
-				model="ctrl.target.environment"
-				class = "max-width-12"
-				lookup-text="true"
-				allow-custom = "false"
-				get-options="ctrl.getEnvironments()"
-				on-change = "ctrl.refresh()"
-				>
-      </gf-form-dropdown>
-    </div>
+    <div class="gf-form-inline">
+        <div class="gf-form max-width-20">
+            <select class="gf-form-input" ng-model="ctrl.target.type"
+                    ng-change="ctrl.onTargetTypeChange()"
+                    ng-options="f.value as f.text for f in ctrl.targetTypes"></select>
+        </div>
+        <div class="gf-form max-width-12">
+            <gf-form-dropdown
+                    model="ctrl.target.resource"
+                    ng-if="ctrl.target.type !== 'RUNTIME_MANAGER_METRICS'"
+                    class="max-width-12"
+                    lookup-text="true"
+                    allow-custom="false"
+                    get-options="ctrl.getResourceTypes()"
+                    on-change="ctrl.refresh()"
+            >
+            </gf-form-dropdown>
+            <select class="gf-form-input" ng-if="ctrl.target.type === 'RUNTIME_MANAGER_METRICS'"
+                    ng-model="ctrl.target.resource" ng-change="ctrl.refresh()"
+                    ng-options="f.value as f.text for f in ctrl.resourceTypes[ctrl.target.type]"></select>
+        </div>
+        <div class="gf-form max-width-12">
+            <gf-form-dropdown
+                    model="ctrl.target.organization"
+                    class="max-width-12"
+                    lookup-text="true"
+                    allow-custom="false"
+                    get-options="ctrl.getOrganizations()"
+                    on-change="ctrl.refresh()"
+            >
+            </gf-form-dropdown>
+        </div>
+        <div class="gf-form max-width-12"
+             ng-if="ctrl.target.resource !== 'ORGANIZATION'">
+            <gf-form-dropdown
+                    model="ctrl.target.environment"
+                    class="max-width-12"
+                    lookup-text="true"
+                    allow-custom="false"
+                    get-options="ctrl.getEnvironments()"
+                    on-change="ctrl.refresh()"
+            >
+            </gf-form-dropdown>
+        </div>
+        <div class="gf-form max-width-20" ng-if="ctrl.target.type === 'RUNTIME_MANAGER_METRICS'">
+            <gf-form-dropdown
+                    model="ctrl.target.metricTarget"
+                    class="max-width-20"
+                    lookup-text="true"
+                    allow-custom="false"
+                    get-options="ctrl.getMetricTargets()"
+                    on-change="ctrl.refresh()">
+            </gf-form-dropdown>
+        </div>
 
-    <div class="gf-form gf-form--grow" >
-      <input type="text" class="gf-form-input gf-form--forw" ng-model="ctrl.target.jsonPath" spellcheck='false' placeholder="JSONPath to filter data, eg: $[?(/comments.*/.test(@.name))]  " data-min-length=0 data-items=1000 ng-model-onblur ng-change="ctrl.refresh()" />
+        <div class="gf-form max-width-6" ng-if="ctrl.target.type === 'RUNTIME_MANAGER_METRICS'">
+            <select class="gf-form-input" ng-model="ctrl.target.aggregation"
+                    ng-change="ctrl.refresh()"
+                    ng-options="f as f for f in ctrl.metricAggregationTypes"></select>
+        </div>
+        <div class="gf-form gf-form--grow">
+            <gf-form-dropdown
+                    ng-if="ctrl.target.type === 'RUNTIME_MANAGER_METRICS'"
+                    model="ctrl.target.metric"
+                    lookup-text="true"
+                    class="gf-form--grow"
+                    allow-custom="false"
+                    get-options="ctrl.getMetricTypes()"
+                    on-change="ctrl.refresh()"
+            >
+            </gf-form-dropdown>
+            <input ng-if="ctrl.target.type!=='RUNTIME_MANAGER_METRICS'" type="text" class="gf-form-input"
+                   ng-model="ctrl.target.jsonPath" spellcheck='false'
+                   placeholder="JSONPath to filter data, eg: $[?(/comments.*/.test(@.name))]  "
+                   ng-blur="ctrl.refresh()"/>
+        </div>
+        <input ng-if="ctrl.target.type==='RUNTIME_MANAGER_METRICS'" type="text" class="gf-form-input"
+               ng-model="ctrl.target.legendFormat" spellcheck='false'
+               placeholder="Legend Format" data-min-length=0
+               ng-blur="ctrl.refresh()"/>
     </div>
-    <!-- <div class="gf-form gf-form--grow">
-      <div class="gf-form-label gf-form-label--grow"></div>
-    </div> -->
-  </div>
 </query-editor-row>

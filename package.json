@@ -1,5 +1,5 @@
 {
-  "name": "grafana-simple-json",
+  "name": "grafana-anypoint-datasource",
   "private": true,
   "version": "1.0.0",
   "description": "",
@@ -10,12 +10,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/grafana/simple-json-datasource.git"
+    "url": "git+https://github.com/cpmoore/grafana-anypoint-datasource.git"
   },
   "author": "",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/grafana/simple-json-datasource/issues"
+    "url": "https://github.com/cpmoore/grafana-anypoint-datasource/issues"
   },
   "engineStrict": true,
   "devDependencies": {
@@ -40,7 +40,8 @@
     "q": "^1.5.0"
   },
   "dependencies": {
-    "lodash": "^4.17.4"
+    "lodash": "^4.17.4",
+    "moment": "^2.24.0"
   },
-  "homepage": "https://github.com/grafana/simple-json-datasource#readme"
+  "homepage": "https://github.com/cpmoore/grafana-anypoint-datasource#readme"
 }
