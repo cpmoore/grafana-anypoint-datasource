@@ -6,7 +6,9 @@
   "main": "index.js",
   "scripts": {
     "build": "./node_modules/grunt-cli/bin/grunt",
-    "test": "./node_modules/grunt-cli/bin/grunt mochaTest"
+    "test": "./node_modules/grunt-cli/bin/grunt mochaTest",
+    "snyk-protect": "snyk protect",
+    "prepublish": "npm run snyk-protect"
   },
   "repository": {
     "type": "git",
@@ -41,7 +43,9 @@
   },
   "dependencies": {
     "lodash": "^4.17.4",
-    "moment": "^2.24.0"
+    "moment": "^2.24.0",
+    "snyk": "^1.316.1"
   },
-  "homepage": "https://github.com/cpmoore/grafana-anypoint-datasource#readme"
+  "homepage": "https://github.com/cpmoore/grafana-anypoint-datasource#readme",
+  "snyk": true
 }
